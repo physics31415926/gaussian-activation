@@ -32,21 +32,21 @@ class LearnableGaussian(nn.Module):
     优化版 LearnableGaussian 激活函数
     
     改进:
-    1. 更好的初始化 (参考 GELU 的行为)
-    2. 可学习的 gamma/beta 用于缩放和偏移
-    3. 添加残差连接支持
+    1. 初始平缓 (大 sigma)，便于梯度传播
+    2. 有一定平移 (mu ≠ 0)，让网络学习最优位置
+    3. 可学习的 gamma/beta 用于缩放和偏移
     """
-    def __init__(self, init_mu=0.0, init_sigma=0.8, init_gamma=1.2, init_beta=0.0):
+    def __init__(self, init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0):
         super().__init__()
-        # 优化: 使用更小的 sigma，让高斯更尖锐
+        # 优化: 初始平缓 (大 sigma=2.0)，有一定平移 (mu=0.5)
         self.mu = nn.Parameter(torch.tensor(init_mu))
         self.sigma = nn.Parameter(torch.tensor(init_sigma))
         self.gamma = nn.Parameter(torch.tensor(init_gamma))
         self.beta = nn.Parameter(torch.tensor(init_beta))
     
     def forward(self, x):
-        # 确保 sigma 为正
-        sigma = torch.abs(self.sigma) + 0.01
+        # 确保 sigma 为正且不太小
+        sigma = torch.clamp(torch.abs(self.sigma), min=0.5)
         gaussian = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
         return self.gamma * gaussian + self.beta
 
@@ -61,7 +61,7 @@ class MLP(nn.Module):
         self.c_proj = nn.Linear(4 * n_embd, n_embd)
         
         if activation == 'gaussian':
-            self.act = LearnableGaussian(init_mu=0.0, init_sigma=0.8, init_gamma=1.2)
+            self.act = LearnableGaussian(init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0)
         elif activation == 'gelu':
             self.act = nn.GELU()
         else:
@@ -279,10 +279,11 @@ def main():
     print("Experiment 7c: nanoGPT + LearnableGaussian (Optimized)")
     print("="*70)
     print("\n优化策略:")
-    print("1. 改进初始化: sigma=0.8 (更尖锐), gamma=1.2")
-    print("2. 残差缩放: 可学习的残差连接缩放因子")
-    print("3. 分层学习率: Gaussian 参数使用 2x 学习率")
-    print("4. Warmup: 100 步 warmup 阶段")
+    print("1. 初始平缓: sigma=2.0 (大 sigma，便于梯度传播)")
+    print("2. 有一定平移: mu=0.5 (让网络学习最优位置)")
+    print("3. 残差缩放: 可学习的残差连接缩放因子")
+    print("4. 分层学习率: Gaussian 参数使用 2x 学习率")
+    print("5. Warmup: 100 步 warmup 阶段")
     print("="*70)
     
     device = "cuda" if torch.cuda.is_available() else "cpu"

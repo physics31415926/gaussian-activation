@@ -24,8 +24,11 @@ import random
 import time
 import urllib.request
 
-# 从 src 导入 LearnableGaussian
+# 方式1: 从 src.activations 导入
 from src.activations import LearnableGaussian
+
+# 方式2: 从 src 包导入（备用）
+# from src import LearnableGaussian
 
 def set_seed(seed=42):
     random.seed(seed)

@@ -254,10 +254,21 @@ class GaussianResNetMini(nn.Module):
             act_fn(),
         )
         
-        # Residual blocks
+        # Residual blocks with proper shortcuts
         self.block1 = self._make_block(32, 32, act_fn, stride=1)
+        self.shortcut1 = nn.Identity()  # 32 -> 32, no projection needed
+        
         self.block2 = self._make_block(32, 64, act_fn, stride=2)
+        self.shortcut2 = nn.Sequential(
+            nn.Conv2d(32, 64, 1, stride=2),
+            nn.BatchNorm2d(64),
+        )  # 32 -> 64 with projection
+        
         self.block3 = self._make_block(64, 128, act_fn, stride=2)
+        self.shortcut3 = nn.Sequential(
+            nn.Conv2d(64, 128, 1, stride=2),
+            nn.BatchNorm2d(128),
+        )  # 64 -> 128 with projection
         
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(128, 10)
@@ -274,18 +285,10 @@ class GaussianResNetMini(nn.Module):
     def forward(self, x):
         x = self.stem(x)
         
-        # 带残差连接的块
-        identity = x
-        x = self.block1(x)
-        x = x + identity  # 残差连接
-        
-        identity = x[:, :64] if x.size(1) > 64 else x
-        if x.size(1) != identity.size(1):
-            identity = nn.functional.pad(identity, (0, 0, 0, 0, 0, x.size(1) - identity.size(1)))
-        x = self.block2(x) + identity
-        
-        identity = x
-        x = self.block3(x) + identity
+        # Residual blocks with proper shortcuts
+        x = self.block1(x) + self.shortcut1(x)
+        x = self.block2(x) + self.shortcut2(x)
+        x = self.block3(x) + self.shortcut3(x)
         
         x = self.avgpool(x)
         return self.fc(x.view(x.size(0), -1))

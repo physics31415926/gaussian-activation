@@ -21,28 +21,8 @@ from pathlib import Path
 import time
 import math
 
-# ============================================================
-# 优化1: 可学习参数的 Gaussian
-# ============================================================
-class LearnableGaussian(nn.Module):
-    """
-    完全可学习的 Gaussian 激活函数
-    
-    f(x) = gamma * exp(-(x - mu)^2 / (2 * sigma^2)) + beta
-    
-    所有参数都可以学习
-    """
-    def __init__(self, init_mu=0.0, init_sigma=1.0, init_gamma=1.0, init_beta=0.0):
-        super().__init__()
-        self.mu = nn.Parameter(torch.tensor(init_mu))
-        self.sigma = nn.Parameter(torch.tensor(init_sigma))
-        self.gamma = nn.Parameter(torch.tensor(init_gamma))
-        self.beta = nn.Parameter(torch.tensor(init_beta))
-    
-    def forward(self, x):
-        sigma = torch.abs(self.sigma) + 1e-8
-        gaussian = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
-        return self.gamma * gaussian + self.beta
+# 从 src 导入 LearnableGaussian
+from src.activations import LearnableGaussian
 
 
 # ============================================================

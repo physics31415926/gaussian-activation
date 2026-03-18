@@ -2,6 +2,15 @@
 实验7: nanoGPT 激活函数替换训练实验
 使用 nanoGPT 架构，将激活函数替换为 LearnableGaussian，从头训练
 """
+import sys
+import os
+
+# 添加 src 到路径
+if os.path.exists('/content/gaussian-activation'):
+    sys.path.insert(0, '/content/gaussian-activation')
+else:
+    sys.path.insert(0, '..')
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,6 +24,9 @@ import random
 import time
 import urllib.request
 
+# 从 src 导入 LearnableGaussian
+from src.activations import LearnableGaussian
+
 # 设置随机种子
 def set_seed(seed=42):
     random.seed(seed)
@@ -23,24 +35,6 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)
 
 set_seed(42)
-
-
-# ============================================================
-# LearnableGaussian 激活函数
-# ============================================================
-class LearnableGaussian(nn.Module):
-    """完全可学习的 Gaussian 激活函数"""
-    def __init__(self, init_mu=0.0, init_sigma=1.0, init_gamma=1.0, init_beta=0.0):
-        super().__init__()
-        self.mu = nn.Parameter(torch.tensor(init_mu))
-        self.sigma = nn.Parameter(torch.tensor(init_sigma))
-        self.gamma = nn.Parameter(torch.tensor(init_gamma))
-        self.beta = nn.Parameter(torch.tensor(init_beta))
-    
-    def forward(self, x):
-        sigma = torch.abs(self.sigma) + 1e-8
-        gaussian = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
-        return self.gamma * gaussian + self.beta
 
 
 # ============================================================

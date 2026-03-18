@@ -1,7 +1,16 @@
 """
 Experiment 7c: nanoGPT + LearnableGaussian (Optimized)
-优化版本：改进初始化、学习率调度、梯度处理
+优化版本：使用 src.activations 中的 LearnableGaussian
 """
+import sys
+import os
+
+# 添加 src 到路径
+if os.path.exists('/content/gaussian-activation'):
+    sys.path.insert(0, '/content/gaussian-activation')
+else:
+    sys.path.insert(0, '..')
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,6 +24,9 @@ import random
 import time
 import urllib.request
 
+# 从 src 导入 LearnableGaussian
+from src.activations import LearnableGaussian
+
 def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -25,72 +37,13 @@ set_seed(42)
 
 
 # ============================================================
-# 优化 1: 改进的 LearnableGaussian 初始化
-# ============================================================
-class LearnableGaussian(nn.Module):
-    """
-    优化版 LearnableGaussian 激活函数
-    
-    改进:
-    1. 初始平缓 (大 sigma)，便于梯度传播
-    2. 有一定平移 (mu ≠ 0)，让网络学习最优位置
-    3. 可学习的 gamma/beta 用于缩放和偏移
-    """
-    def __init__(self, init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0):
-        super().__init__()
-        # 优化: 初始平缓 (大 sigma=2.0)，有一定平移 (mu=0.5)
-        self.mu = nn.Parameter(torch.tensor(init_mu))
-        self.sigma = nn.Parameter(torch.tensor(init_sigma))
-        self.gamma = nn.Parameter(torch.tensor(init_gamma))
-        self.beta = nn.Parameter(torch.tensor(init_beta))
-    
-    def forward(self, x):
-        # 确保 sigma 为正且不太小
-        sigma = torch.clamp(torch.abs(self.sigma), min=0.5)
-        gaussian = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
-        return self.gamma * gaussian + self.beta
-
-
-# ============================================================
-# 优化 2: 带残差缩放的 MLP
-# ============================================================
-class MLP(nn.Module):
-    def __init__(self, n_embd, activation='gaussian', use_residual_scale=True):
-        super().__init__()
-        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
-        self.c_proj = nn.Linear(4 * n_embd, n_embd)
-        
-        if activation == 'gaussian':
-            self.act = LearnableGaussian(init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0)
-        elif activation == 'gelu':
-            self.act = nn.GELU()
-        else:
-            self.act = nn.ReLU()
-        
-        # 残差缩放因子
-        self.use_residual_scale = use_residual_scale
-        if use_residual_scale:
-            self.residual_scale = nn.Parameter(torch.ones(1))
-    
-    def forward(self, x):
-        h = self.c_fc(x)
-        h = self.act(h)
-        h = self.c_proj(h)
-        
-        if self.use_residual_scale:
-            h = h * self.residual_scale
-        
-        return h
-
-
-# ============================================================
 # 数据集
 # ============================================================
 class CharDataset(Dataset):
     def __init__(self, data, block_size=128):
         chars = sorted(list(set(data)))
         self.stoi = {ch: i for i, ch in enumerate(chars)}
-        self.vocab_size = len(chars)  # 添加 vocab_size 属性
+        self.vocab_size = len(chars)
         self.block_size = block_size
         self.data = torch.tensor([self.stoi[c] for c in data], dtype=torch.long)
         
@@ -101,6 +54,35 @@ class CharDataset(Dataset):
         x = self.data[idx:idx + self.block_size]
         y = self.data[idx + 1:idx + self.block_size + 1]
         return x, y
+
+
+# ============================================================
+# MLP 层 - 使用 src.activations.LearnableGaussian
+# ============================================================
+class MLP(nn.Module):
+    def __init__(self, n_embd, activation='relu'):
+        super().__init__()
+        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
+        self.c_proj = nn.Linear(4 * n_embd, n_embd)
+        
+        if activation == 'gaussian':
+            # 使用 src.activations 中的 LearnableGaussian
+            # 优化初始化: 平缓(sigma=2.0) + 平移(mu=0.5)
+            self.act = LearnableGaussian(init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0)
+        elif activation == 'gelu':
+            self.act = nn.GELU()
+        else:
+            self.act = nn.ReLU()
+        
+        # 残差缩放因子
+        self.residual_scale = nn.Parameter(torch.ones(1))
+    
+    def forward(self, x):
+        h = self.c_fc(x)
+        h = self.act(h)
+        h = self.c_proj(h)
+        h = h * self.residual_scale
+        return h
 
 
 # ============================================================
@@ -137,7 +119,7 @@ class CausalSelfAttention(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, n_embd, n_head, block_size, activation='gaussian'):
+    def __init__(self, n_embd, n_head, block_size, activation='relu'):
         super().__init__()
         self.ln_1 = nn.LayerNorm(n_embd)
         self.attn = CausalSelfAttention(n_embd, n_head, block_size)
@@ -151,7 +133,7 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, block_size, n_layer, n_head, n_embd, activation='gaussian'):
+    def __init__(self, vocab_size, block_size, n_layer, n_head, n_embd, activation='relu'):
         super().__init__()
         self.block_size = block_size
         
@@ -194,18 +176,12 @@ class GPT(nn.Module):
 
 
 # ============================================================
-# 优化 3: 改进的训练函数
+# 训练函数
 # ============================================================
 def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100):
-    """
-    优化训练:
-    1. 降低学习率 (5e-4)
-    2. Warmup 阶段
-    3. 分层学习率 (Gaussian 参数使用 1.5x 而不是 2x)
-    """
     model = model.to(device)
     
-    # 优化: 分层学习率
+    # 分层学习率
     base_params = []
     gaussian_params = []
     
@@ -215,7 +191,6 @@ def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=10
         else:
             base_params.append(param)
     
-    # Gaussian 参数使用 1.5x 学习率（而不是 2x）
     optimizer = optim.AdamW([
         {'params': base_params, 'lr': lr},
         {'params': gaussian_params, 'lr': lr * 1.5}
@@ -240,10 +215,7 @@ def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=10
         optimizer.zero_grad()
         _, loss = model(x, y)
         loss.backward()
-        
-        # 梯度裁剪
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        
         optimizer.step()
         
         if loss.item() < best_loss:
@@ -351,9 +323,9 @@ def main():
         'test_loss': test_loss,
         'train_time': train_time,
         'optimizations': [
-            'improved_init_sigma_0.8',
+            'improved_init_sigma_2.0_mu_0.5',
             'residual_scale',
-            'layerwise_lr_2x',
+            'layerwise_lr_1.5x',
             'warmup_100'
         ]
     }

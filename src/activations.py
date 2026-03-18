@@ -53,6 +53,30 @@ class LearnableGaussianActivation(nn.Module):
         return torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
 
 
+class LearnableGaussian(nn.Module):
+    """
+    完全可学习的 Gaussian 激活函数 (全局参数版本)
+    
+    f(x) = gamma * exp(-(x - mu)^2 / (2 * sigma^2)) + beta
+    
+    所有参数都是标量，全局共享
+    """
+    def __init__(self, init_mu=0.0, init_sigma=1.0, init_gamma=1.0, init_beta=0.0):
+        super().__init__()
+        self.mu = nn.Parameter(torch.tensor(init_mu))
+        self.sigma = nn.Parameter(torch.tensor(init_sigma))
+        self.gamma = nn.Parameter(torch.tensor(init_gamma))
+        self.beta = nn.Parameter(torch.tensor(init_beta))
+    
+    def forward(self, x):
+        sigma = torch.abs(self.sigma) + 1e-8
+        gaussian = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
+        return self.gamma * gaussian + self.beta
+    
+    def extra_repr(self):
+        return f'mu={self.mu.item():.4f}, sigma={self.sigma.item():.4f}, gamma={self.gamma.item():.4f}, beta={self.beta.item():.4f}'
+
+
 class MultiGaussianActivation(nn.Module):
     """
     多高斯混合激活函数

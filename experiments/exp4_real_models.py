@@ -3,7 +3,13 @@
 使用小数据集快速验证经典模型的激活函数替换
 """
 import sys
-sys.path.insert(0, '..')
+import os
+
+# 自动处理 Colab 和本地路径
+if os.path.exists('/content/gaussian-activation'):
+    sys.path.insert(0, '/content/gaussian-activation')
+else:
+    sys.path.insert(0, '..')
 
 import torch
 import torch.nn as nn

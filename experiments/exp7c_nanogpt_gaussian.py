@@ -90,6 +90,7 @@ class CharDataset(Dataset):
     def __init__(self, data, block_size=128):
         chars = sorted(list(set(data)))
         self.stoi = {ch: i for i, ch in enumerate(chars)}
+        self.vocab_size = len(chars)  # 添加 vocab_size 属性
         self.block_size = block_size
         self.data = torch.tensor([self.stoi[c] for c in data], dtype=torch.long)
         

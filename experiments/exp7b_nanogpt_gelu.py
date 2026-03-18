@@ -5,11 +5,12 @@ Experiment 7b: nanoGPT + GELU (Baseline)
 import sys
 import os
 
-# 添加 src 到路径
-if os.path.exists('/content/gaussian-activation'):
-    sys.path.insert(0, '/content/gaussian-activation')
+# 添加项目根目录到路径
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.exists('/content/workspace/gaussian-activation'):
+    sys.path.insert(0, '/content/workspace/gaussian-activation')
 else:
-    sys.path.insert(0, '..')
+    sys.path.insert(0, project_root)
 
 import torch
 import torch.nn as nn

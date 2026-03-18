@@ -13,6 +13,7 @@ else:
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import time
 import json
 from pathlib import Path
@@ -43,6 +44,30 @@ class LearnableGaussian(nn.Module):
 
 
 # ============================================================
+# 带有 LearnableGaussian 的 MLP 层
+# ============================================================
+class Qwen3MLPWithGaussian(nn.Module):
+    """
+    Qwen3 的 MLP 层，使用 LearnableGaussian 激活函数
+    
+    原始结构: gate_proj (up_proj) -> activation -> down_proj
+    SwiGLU: output = down_proj(silu(gate_proj(x)) * up_proj(x))
+    
+    替换为 Gaussian: output = down_proj(gaussian(gate_proj(x)) * up_proj(x))
+    """
+    def __init__(self, original_mlp, gaussian_act):
+        super().__init__()
+        self.gate_proj = original_mlp.gate_proj
+        self.up_proj = original_mlp.up_proj
+        self.down_proj = original_mlp.down_proj
+        self.act_fn = gaussian_act  # 替换为 LearnableGaussian
+    
+    def forward(self, x):
+        # SwiGLU 结构
+        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+
+# ============================================================
 # 模型加载和激活函数替换
 # ============================================================
 def load_qwen3_model(model_name="Qwen/Qwen3-0.6B"):
@@ -64,43 +89,46 @@ def load_qwen3_model(model_name="Qwen/Qwen3-0.6B"):
 
 def replace_activation_with_gaussian(model):
     """
-    将模型中的激活函数替换为 LearnableGaussian
+    将 Qwen3 模型中的激活函数替换为 LearnableGaussian
     
-    Qwen3 使用的激活函数可能是:
-    - SiLU (Swish)
-    - GELU
-    - ReLU
+    Qwen3 使用 SwiGLU 激活，在 MLP 层中：
+    - gate_proj: 线性投影
+    - up_proj: 线性投影  
+    - down_proj: 线性投影
+    - act_fn: SiLU 激活函数
+    
+    我们需要替换 MLP 层的 act_fn
     """
-    import torch.nn as nn
-    from transformers.activations import ACT2FN
-    
     replaced_count = 0
     
-    def replace_module(module, name=""):
-        nonlocal replaced_count
+    # 遍历所有模块
+    for name, module in model.named_modules():
+        # 检查是否是 Qwen3 的 MLP 层
+        module_type = type(module).__name__
         
-        for child_name, child in module.named_children():
-            full_name = f"{name}.{child_name}" if name else child_name
-            
-            # 检查是否是激活函数层
-            if isinstance(child, (nn.ReLU, nn.GELU, nn.SiLU, nn.Sigmoid, nn.Tanh)):
-                # 替换为 LearnableGaussian
-                setattr(module, child_name, LearnableGaussian())
+        if 'MLP' in module_type or 'Qwen2MoeMLP' in module_type:
+            # 检查是否有 act_fn 属性
+            if hasattr(module, 'act_fn'):
+                original_act = module.act_fn
+                original_act_type = type(original_act).__name__
+                
+                # 创建新的 LearnableGaussian
+                gaussian_act = LearnableGaussian()
+                
+                # 直接替换 act_fn
+                module.act_fn = gaussian_act
                 replaced_count += 1
-                print(f"  Replaced: {full_name} ({type(child).__name__} -> LearnableGaussian)")
-            
-            # 检查是否是 Activation 类 (transformers 的激活函数)
-            elif hasattr(child, '__class__') and child.__class__.__name__ in ['SiLU', 'GELU', 'ReLU', 'QuickGELU']:
-                setattr(module, child_name, LearnableGaussian())
+                
+                print(f"  Replaced: {name}.act_fn ({original_act_type} -> LearnableGaussian)")
+        
+        # 也检查是否有 activation_fn 属性
+        if hasattr(module, 'activation_fn') and callable(getattr(module, 'activation_fn')):
+            if not isinstance(module.activation_fn, LearnableGaussian):
+                original_type = type(module.activation_fn).__name__
+                module.activation_fn = LearnableGaussian()
                 replaced_count += 1
-                print(f"  Replaced: {full_name} ({child.__class__.__name__} -> LearnableGaussian)")
-            
-            # 递归处理子模块
-            else:
-                replace_module(child, full_name)
+                print(f"  Replaced: {name}.activation_fn ({original_type} -> LearnableGaussian)")
     
-    print("\nReplacing activation functions...")
-    replace_module(model)
     print(f"\nTotal replaced: {replaced_count} activation functions")
     
     return model, replaced_count
@@ -113,7 +141,7 @@ def count_parameters(model):
     return total, trainable
 
 
-def test_model_forward(model, tokenizer, device="cuda"):
+def test_model_forward(model, tokenizer, device="cuda", max_new_tokens=30):
     """测试模型前向传播"""
     print("\nTesting forward pass...")
     
@@ -125,7 +153,7 @@ def test_model_forward(model, tokenizer, device="cuda"):
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=20,
+            max_new_tokens=max_new_tokens,
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id
         )
@@ -142,16 +170,54 @@ def analyze_activation_params(model):
     gaussian_params = []
     
     for name, module in model.named_modules():
-        if isinstance(module, LearnableGaussian):
+        # 检查 act_fn 是否是 LearnableGaussian
+        if hasattr(module, 'act_fn') and isinstance(module.act_fn, LearnableGaussian):
             gaussian_params.append({
                 'name': name,
-                'mu': module.mu.item(),
-                'sigma': module.sigma.item(),
-                'gamma': module.gamma.item(),
-                'beta': module.beta.item(),
+                'mu': module.act_fn.mu.item(),
+                'sigma': module.act_fn.sigma.item(),
+                'gamma': module.act_fn.gamma.item(),
+                'beta': module.act_fn.beta.item(),
+            })
+        
+        # 也检查 activation_fn
+        if hasattr(module, 'activation_fn') and isinstance(module.activation_fn, LearnableGaussian):
+            gaussian_params.append({
+                'name': name,
+                'mu': module.activation_fn.mu.item(),
+                'sigma': module.activation_fn.sigma.item(),
+                'gamma': module.activation_fn.gamma.item(),
+                'beta': module.activation_fn.beta.item(),
             })
     
     return gaussian_params
+
+
+def analyze_model_structure(model):
+    """分析模型结构"""
+    print("\n" + "="*70)
+    print("分析模型结构")
+    print("="*70)
+    
+    # 查找 MLP 模块
+    mlp_modules = []
+    for name, module in model.named_modules():
+        module_type = type(module).__name__
+        if 'MLP' in module_type or 'mlp' in module_type.lower():
+            mlp_modules.append((name, module_type))
+            print(f"\nMLP Found: {name}")
+            for sub_name, sub_module in module.named_children():
+                print(f"  └── {sub_name}: {type(sub_module).__name__}")
+            
+            # 检查 act_fn
+            if hasattr(module, 'act_fn'):
+                print(f"  └── act_fn: {type(module.act_fn).__name__}")
+            
+            # 只显示前 2 个 MLP
+            if len(mlp_modules) >= 2:
+                break
+    
+    return mlp_modules
 
 
 def main():
@@ -168,7 +234,7 @@ def main():
         print(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     
     # ============================================================
-    # 1. 加载原始模型
+    # 1. 加载原始模型并分析结构
     # ============================================================
     print("\n" + "="*70)
     print("1. 加载原始 Qwen3-0.6B 模型")
@@ -178,6 +244,9 @@ def main():
     total_params, trainable_params = count_parameters(model_orig)
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
+    
+    # 分析模型结构
+    analyze_model_structure(model_orig)
     
     # 测试原始模型
     print("\nTesting original model:")
@@ -223,7 +292,7 @@ def main():
     if len(gaussian_params) > 0:
         print("\nSample parameters (first 5):")
         for i, p in enumerate(gaussian_params[:5]):
-            print(f"  {i+1}. {p['name'][:50]}...")
+            print(f"  {i+1}. {p['name'][:60]}...")
             print(f"     mu={p['mu']:.4f}, sigma={p['sigma']:.4f}, gamma={p['gamma']:.4f}, beta={p['beta']:.4f}")
     
     # ============================================================
@@ -263,7 +332,16 @@ def main():
     print(f"- 成功替换 {replaced_count} 个激活函数")
     print(f"- 模型参数量: {total_params:,}")
     print(f"- LearnableGaussian 层数: {len(gaussian_params)}")
-    print(f"\n注意: 替换后的模型输出可能与原始模型不同，需要进一步微调。")
+    
+    if replaced_count == 0:
+        print("\n⚠️ 警告: 没有找到可替换的激活函数！")
+        print("可能的原因:")
+        print("1. Qwen3 使用了非标准激活函数位置")
+        print("2. 激活函数被内联为函数调用而非模块")
+        print("3. 需要检查 Qwen3 的具体实现")
+    else:
+        print(f"\n✅ 成功将 {replaced_count} 个激活函数替换为 LearnableGaussian")
+        print("注意: 替换后的模型输出可能与原始模型不同，需要进一步微调。")
 
 
 if __name__ == "__main__":

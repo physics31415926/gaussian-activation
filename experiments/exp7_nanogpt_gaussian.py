@@ -273,7 +273,7 @@ def train_model(model, train_loader, config, device, activation_name):
     losses = []
     best_loss = float('inf')
     
-    for iter_id, (input_ids,) in enumerate(train_loader):
+    for iter_id, input_ids in enumerate(train_loader):
         if iter_id >= config.max_iters:
             break
         

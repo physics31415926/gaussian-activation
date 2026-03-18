@@ -1,6 +1,6 @@
 """
 Experiment 7c: nanoGPT + LearnableGaussian (Optimized)
-优化版本：使用 src.activations 中的 LearnableGaussian
+优化版本：从 src 导入，添加可视化
 """
 import sys
 import os
@@ -24,11 +24,12 @@ import random
 import time
 import urllib.request
 
-# 方式1: 从 src.activations 导入
+# 从 src 导入
 from src.activations import LearnableGaussian
-
-# 方式2: 从 src 包导入（备用）
-# from src import LearnableGaussian
+from src.visualization import (
+    visualize_learnable_gaussian_params,
+    visualize_all_gaussian_activations
+)
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -60,7 +61,7 @@ class CharDataset(Dataset):
 
 
 # ============================================================
-# MLP 层 - 使用 src.activations.LearnableGaussian
+# MLP 层
 # ============================================================
 class MLP(nn.Module):
     def __init__(self, n_embd, activation='relu'):
@@ -69,27 +70,27 @@ class MLP(nn.Module):
         self.c_proj = nn.Linear(4 * n_embd, n_embd)
         
         if activation == 'gaussian':
-            # 使用 src.activations 中的 LearnableGaussian
-            # 优化初始化: 平缓(sigma=2.0) + 平移(mu=0.5)
-            self.act = LearnableGaussian(init_mu=0.5, init_sigma=2.0, init_gamma=1.0, init_beta=0.0)
+            # 初始化: sigma=1 (标准), 小幅平移
+            self.act = LearnableGaussian(
+                init_mu=0.0,      # 左右平移 (初始为0)
+                init_sigma=1.0,   # 宽度 (初始为1)
+                init_gamma=1.0,   # 缩放
+                init_beta=0.0     # 上下平移 (初始为0)
+            )
         elif activation == 'gelu':
             self.act = nn.GELU()
         else:
             self.act = nn.ReLU()
-        
-        # 残差缩放因子
-        self.residual_scale = nn.Parameter(torch.ones(1))
     
     def forward(self, x):
-        h = self.c_fc(x)
-        h = self.act(h)
-        h = self.c_proj(h)
-        h = h * self.residual_scale
-        return h
+        x = self.c_fc(x)
+        x = self.act(x)
+        x = self.c_proj(x)
+        return x
 
 
 # ============================================================
-# 注意力层
+# 模型
 # ============================================================
 class CausalSelfAttention(nn.Module):
     def __init__(self, n_embd, n_head, block_size):
@@ -178,9 +179,20 @@ class GPT(nn.Module):
         return logits, loss
 
 
-# ============================================================
-# 训练函数
-# ============================================================
+def get_gaussian_params(model):
+    """收集模型中所有 LearnableGaussian 的参数"""
+    params = {'mu': [], 'sigma': [], 'gamma': [], 'beta': []}
+    
+    for name, module in model.named_modules():
+        if isinstance(module, LearnableGaussian):
+            params['mu'].append(module.mu.item())
+            params['sigma'].append(module.sigma.item())
+            params['gamma'].append(module.gamma.item())
+            params['beta'].append(module.beta.item())
+    
+    return params
+
+
 def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100):
     model = model.to(device)
     
@@ -213,7 +225,7 @@ def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=10
         if iter_count < warmup_steps:
             warmup_factor = (iter_count + 1) / warmup_steps
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * warmup_factor
+                param_group['lr'] = param_group['initial_lr'] * warmup_factor if 'initial_lr' in param_group else param_group['lr'] * warmup_factor
         
         optimizer.zero_grad()
         _, loss = model(x, y)
@@ -254,11 +266,10 @@ def main():
     print("Experiment 7c: nanoGPT + LearnableGaussian (Optimized)")
     print("="*70)
     print("\n优化策略:")
-    print("1. 初始平缓: sigma=2.0 (大 sigma，便于梯度传播)")
-    print("2. 有一定平移: mu=0.5 (让网络学习最优位置)")
-    print("3. 残差缩放: 可学习的残差连接缩放因子")
-    print("4. 分层学习率: Gaussian 参数使用 1.5x 学习率 (lr=5e-4)")
-    print("5. Warmup: 100 步 warmup 阶段")
+    print("1. 初始化: sigma=1.0 (标准高斯宽度)")
+    print("2. 可学习参数: mu (左右平移), beta (上下平移), gamma (缩放)")
+    print("3. 分层学习率: Gaussian 参数使用 1.5x 学习率")
+    print("4. Warmup: 100 步")
     print("="*70)
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -297,7 +308,7 @@ def main():
     
     # 训练
     print("\n" + "="*60)
-    print("Training with Optimized LearnableGaussian")
+    print("Training with LearnableGaussian")
     print("="*60)
     
     model = GPT(vocab_size, block_size, n_layer, n_head, n_embd, activation='gaussian')
@@ -307,36 +318,65 @@ def main():
     print(f"Parameters: {total_params:,}")
     print(f"Gaussian layers: {gaussian_layers}")
     
+    # 记录初始参数
+    initial_params = get_gaussian_params(model)
+    print(f"\nInitial Gaussian params (first layer):")
+    print(f"  mu={initial_params['mu'][0]:.4f}, sigma={initial_params['sigma'][0]:.4f}")
+    print(f"  gamma={initial_params['gamma'][0]:.4f}, beta={initial_params['beta'][0]:.4f}")
+    
     start_time = time.time()
     best_loss = train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100)
     train_time = time.time() - start_time
     
     test_loss = evaluate(model, test_loader, device)
     
-    print(f"\nOptimized LearnableGaussian Results:")
+    # 记录训练后参数
+    final_params = get_gaussian_params(model)
+    print(f"\nFinal Gaussian params (first layer):")
+    print(f"  mu={final_params['mu'][0]:.4f}, sigma={final_params['sigma'][0]:.4f}")
+    print(f"  gamma={final_params['gamma'][0]:.4f}, beta={final_params['beta'][0]:.4f}")
+    
+    print(f"\nResults:")
     print(f"  Best train loss: {best_loss:.4f}")
     print(f"  Test loss: {test_loss:.4f}")
     print(f"  Time: {train_time:.1f}s")
     
-    # 保存结果
+    # 可视化
+    print("\n" + "="*60)
+    print("Visualizing Learned Activations")
+    print("="*60)
+    
     Path('results').mkdir(exist_ok=True)
+    
+    # 1. 参数分布
+    visualize_learnable_gaussian_params(
+        model, 
+        save_path='results/exp7c_gaussian_params.png',
+        show=False
+    )
+    
+    # 2. 所有层的激活函数形状
+    visualize_all_gaussian_activations(
+        model,
+        save_path='results/exp7c_gaussian_activations.png',
+        show=False
+    )
+    
+    # 保存结果
     result = {
-        'activation': 'gaussian_optimized',
+        'activation': 'gaussian',
         'best_train_loss': best_loss,
         'test_loss': test_loss,
         'train_time': train_time,
-        'optimizations': [
-            'improved_init_sigma_2.0_mu_0.5',
-            'residual_scale',
-            'layerwise_lr_1.5x',
-            'warmup_100'
-        ]
+        'initial_params': initial_params,
+        'final_params': final_params,
     }
     
-    with open('results/exp7c_gaussian_optimized_results.json', 'w') as f:
+    with open('results/exp7c_results.json', 'w') as f:
         json.dump(result, f, indent=2)
     
-    print("\n✓ Results saved to: results/exp7c_gaussian_optimized_results.json")
+    print("\n✓ Results saved to: results/exp7c_results.json")
+    print("✓ Visualizations saved to: results/exp7c_gaussian_*.png")
     print("\n实验完成！")
 
 

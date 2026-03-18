@@ -60,6 +60,8 @@ class LearnableGaussian(nn.Module):
     f(x) = gamma * exp(-(x - mu)^2 / (2 * sigma^2)) + beta
     
     所有参数都是标量，全局共享
+    
+    支持左右平移 (mu) 和上下平移 (beta)
     """
     def __init__(self, init_mu=0.0, init_sigma=1.0, init_gamma=1.0, init_beta=0.0):
         super().__init__()

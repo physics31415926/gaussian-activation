@@ -1,6 +1,16 @@
 """
-Experiment 7a: nanoGPT + ReLU 训练
+Experiment 7a: nanoGPT + ReLU (Baseline)
+从 src 导入，统一框架
 """
+import sys
+import os
+
+# 添加 src 到路径
+if os.path.exists('/content/gaussian-activation'):
+    sys.path.insert(0, '/content/gaussian-activation')
+else:
+    sys.path.insert(0, '..')
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,10 +33,14 @@ def set_seed(seed=42):
 set_seed(42)
 
 
+# ============================================================
+# 数据集
+# ============================================================
 class CharDataset(Dataset):
     def __init__(self, data, block_size=128):
         chars = sorted(list(set(data)))
         self.stoi = {ch: i for i, ch in enumerate(chars)}
+        self.vocab_size = len(chars)
         self.block_size = block_size
         self.data = torch.tensor([self.stoi[c] for c in data], dtype=torch.long)
         
@@ -37,6 +51,23 @@ class CharDataset(Dataset):
         x = self.data[idx:idx + self.block_size]
         y = self.data[idx + 1:idx + self.block_size + 1]
         return x, y
+
+
+# ============================================================
+# 模型组件
+# ============================================================
+class MLP(nn.Module):
+    def __init__(self, n_embd, activation='relu'):
+        super().__init__()
+        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
+        self.c_proj = nn.Linear(4 * n_embd, n_embd)
+        self.act = nn.ReLU() if activation == 'relu' else nn.GELU()
+    
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = self.act(x)
+        x = self.c_proj(x)
+        return x
 
 
 class CausalSelfAttention(nn.Module):
@@ -67,20 +98,6 @@ class CausalSelfAttention(nn.Module):
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.c_proj(y)
         return y
-
-
-class MLP(nn.Module):
-    def __init__(self, n_embd, activation='relu'):
-        super().__init__()
-        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
-        self.c_proj = nn.Linear(4 * n_embd, n_embd)
-        self.act = nn.ReLU() if activation == 'relu' else nn.GELU() if activation == 'gelu' else nn.SiLU()
-    
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = self.act(x)
-        x = self.c_proj(x)
-        return x
 
 
 class Block(nn.Module):
@@ -140,10 +157,9 @@ class GPT(nn.Module):
         return logits, loss
 
 
-def train_model(model, train_loader, max_iters, device, lr=1e-3):
+def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100):
     model = model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.1)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iters)
     
     model.train()
     best_loss = float('inf')
@@ -155,12 +171,17 @@ def train_model(model, train_loader, max_iters, device, lr=1e-3):
         
         x, y = x.to(device), y.to(device)
         
+        # Warmup
+        if iter_count < warmup_steps:
+            lr_scale = (iter_count + 1) / warmup_steps
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr * lr_scale
+        
         optimizer.zero_grad()
         _, loss = model(x, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
-        scheduler.step()
         
         if loss.item() < best_loss:
             best_loss = loss.item()
@@ -192,7 +213,7 @@ def evaluate(model, test_loader, device):
 
 def main():
     print("="*70)
-    print("Experiment 7a: nanoGPT + ReLU 训练")
+    print("Experiment 7a: nanoGPT + ReLU (Baseline)")
     print("="*70)
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -229,7 +250,7 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     
-    # 训练 ReLU
+    # 训练
     print("\n" + "="*60)
     print("Training with ReLU")
     print("="*60)
@@ -238,7 +259,7 @@ def main():
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
     
     start_time = time.time()
-    best_loss = train_model(model, train_loader, max_iters, device)
+    best_loss = train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100)
     train_time = time.time() - start_time
     
     test_loss = evaluate(model, test_loader, device)

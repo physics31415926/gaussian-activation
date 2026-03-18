@@ -1,6 +1,6 @@
 """
 Experiment 7c: nanoGPT + LearnableGaussian (Optimized)
-优化版本：从 src 导入，添加可视化
+从 src 导入，统一框架，添加可视化
 """
 import sys
 import os
@@ -61,16 +61,16 @@ class CharDataset(Dataset):
 
 
 # ============================================================
-# MLP 层
+# MLP 层 - 使用 src.activations.LearnableGaussian
 # ============================================================
 class MLP(nn.Module):
-    def __init__(self, n_embd, activation='relu'):
+    def __init__(self, n_embd, activation='gaussian'):
         super().__init__()
         self.c_fc = nn.Linear(n_embd, 4 * n_embd)
         self.c_proj = nn.Linear(4 * n_embd, n_embd)
         
         if activation == 'gaussian':
-            # 初始化: sigma=1 (标准), 小幅平移
+            # 初始化: sigma=1 (标准), mu=0 (无平移), gamma=1, beta=0
             self.act = LearnableGaussian(
                 init_mu=0.0,      # 左右平移 (初始为0)
                 init_sigma=1.0,   # 宽度 (初始为1)
@@ -90,7 +90,7 @@ class MLP(nn.Module):
 
 
 # ============================================================
-# 模型
+# 模型组件
 # ============================================================
 class CausalSelfAttention(nn.Module):
     def __init__(self, n_embd, n_head, block_size):
@@ -123,7 +123,7 @@ class CausalSelfAttention(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, n_embd, n_head, block_size, activation='relu'):
+    def __init__(self, n_embd, n_head, block_size, activation='gaussian'):
         super().__init__()
         self.ln_1 = nn.LayerNorm(n_embd)
         self.attn = CausalSelfAttention(n_embd, n_head, block_size)
@@ -137,7 +137,7 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, vocab_size, block_size, n_layer, n_head, n_embd, activation='relu'):
+    def __init__(self, vocab_size, block_size, n_layer, n_head, n_embd, activation='gaussian'):
         super().__init__()
         self.block_size = block_size
         
@@ -223,9 +223,9 @@ def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=10
         
         # Warmup
         if iter_count < warmup_steps:
-            warmup_factor = (iter_count + 1) / warmup_steps
+            lr_scale = (iter_count + 1) / warmup_steps
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['initial_lr'] * warmup_factor if 'initial_lr' in param_group else param_group['lr'] * warmup_factor
+                param_group['lr'] = lr * lr_scale
         
         optimizer.zero_grad()
         _, loss = model(x, y)
@@ -263,13 +263,14 @@ def evaluate(model, test_loader, device):
 
 def main():
     print("="*70)
-    print("Experiment 7c: nanoGPT + LearnableGaussian (Optimized)")
+    print("Experiment 7c: nanoGPT + LearnableGaussian")
     print("="*70)
-    print("\n优化策略:")
-    print("1. 初始化: sigma=1.0 (标准高斯宽度)")
-    print("2. 可学习参数: mu (左右平移), beta (上下平移), gamma (缩放)")
-    print("3. 分层学习率: Gaussian 参数使用 1.5x 学习率")
-    print("4. Warmup: 100 步")
+    print("\nLearnableGaussian 参数说明:")
+    print("  mu    - 左右平移 (水平移动激活峰值)")
+    print("  sigma - 宽度参数 (控制激活范围)")
+    print("  gamma - 缩放因子 (垂直缩放)")
+    print("  beta  - 上下平移 (垂直移动激活)")
+    print("\n初始化: mu=0, sigma=1, gamma=1, beta=0 (标准高斯)")
     print("="*70)
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -372,10 +373,10 @@ def main():
         'final_params': final_params,
     }
     
-    with open('results/exp7c_results.json', 'w') as f:
+    with open('results/exp7c_gaussian_results.json', 'w') as f:
         json.dump(result, f, indent=2)
     
-    print("\n✓ Results saved to: results/exp7c_results.json")
+    print("\n✓ Results saved to: results/exp7c_gaussian_results.json")
     print("✓ Visualizations saved to: results/exp7c_gaussian_*.png")
     print("\n实验完成！")
 

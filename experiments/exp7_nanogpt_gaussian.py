@@ -217,7 +217,7 @@ def train_model(model, train_loader, max_iters, device, lr=1e-3):
             best_loss = loss.item()
         
         if iter_count % 100 == 0:
-            print(f"  Iter {iter_id}: loss={loss.item():.4f}")
+            print(f"  Iter {iter_count}: loss={loss.item():.4f}")
         
         iter_count += 1
     

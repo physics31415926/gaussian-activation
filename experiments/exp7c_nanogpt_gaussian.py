@@ -351,18 +351,19 @@ def main():
     
     Path('results').mkdir(exist_ok=True)
     
-    # 1. 参数分布
+    # 参数打印
     visualize_learnable_gaussian_params(
         model, 
-        save_path='results/exp7c_gaussian_params.png',
+        save_path='results/exp7c_gaussian_params.txt',
         show=False
     )
     
-    # 2. 所有层的激活函数形状
+    # 所有层的激活函数形状
     visualize_all_gaussian_activations(
         model,
         save_path='results/exp7c_gaussian_activations.png',
-        show=False
+        show=False,
+        device=device
     )
     
     # 保存结果

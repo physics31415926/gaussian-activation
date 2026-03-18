@@ -293,6 +293,7 @@ class GaussianResNetMini(nn.Module):
 
 def train_eval(model, train_loader, test_loader, epochs=5, device='cpu'):
     """训练和评估"""
+    model = model.to(device)  # 将模型移动到设备
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     

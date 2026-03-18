@@ -196,12 +196,12 @@ class GPT(nn.Module):
 # ============================================================
 # 优化 3: 改进的训练函数
 # ============================================================
-def train_model(model, train_loader, max_iters, device, lr=2e-3, warmup_steps=100):
+def train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100):
     """
     优化训练:
-    1. 更高的初始学习率
+    1. 降低学习率 (5e-4)
     2. Warmup 阶段
-    3. 分层学习率 (Gaussian 参数使用更高 lr)
+    3. 分层学习率 (Gaussian 参数使用 1.5x 而不是 2x)
     """
     model = model.to(device)
     
@@ -215,10 +215,10 @@ def train_model(model, train_loader, max_iters, device, lr=2e-3, warmup_steps=10
         else:
             base_params.append(param)
     
-    # Gaussian 参数使用 2x 学习率
+    # Gaussian 参数使用 1.5x 学习率（而不是 2x）
     optimizer = optim.AdamW([
         {'params': base_params, 'lr': lr},
-        {'params': gaussian_params, 'lr': lr * 2}
+        {'params': gaussian_params, 'lr': lr * 1.5}
     ], weight_decay=0.1)
     
     model.train()
@@ -282,7 +282,7 @@ def main():
     print("1. 初始平缓: sigma=2.0 (大 sigma，便于梯度传播)")
     print("2. 有一定平移: mu=0.5 (让网络学习最优位置)")
     print("3. 残差缩放: 可学习的残差连接缩放因子")
-    print("4. 分层学习率: Gaussian 参数使用 2x 学习率")
+    print("4. 分层学习率: Gaussian 参数使用 1.5x 学习率 (lr=5e-4)")
     print("5. Warmup: 100 步 warmup 阶段")
     print("="*70)
     
@@ -333,7 +333,7 @@ def main():
     print(f"Gaussian layers: {gaussian_layers}")
     
     start_time = time.time()
-    best_loss = train_model(model, train_loader, max_iters, device, lr=2e-3, warmup_steps=100)
+    best_loss = train_model(model, train_loader, max_iters, device, lr=5e-4, warmup_steps=100)
     train_time = time.time() - start_time
     
     test_loss = evaluate(model, test_loader, device)

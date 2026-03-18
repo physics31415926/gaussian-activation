@@ -333,7 +333,6 @@ def main():
     configs = [
         ('ReLU (baseline)', 'relu'),
         ('LearnableGaussian', 'learnable_gaussian'),
-        ('Hybrid (Gaussian+ReLU)', 'hybrid'),
         ('AdaptiveGaussian', 'adaptive'),
     ]
     

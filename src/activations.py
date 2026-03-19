@@ -79,6 +79,37 @@ class LearnableGaussian(nn.Module):
         return f'mu={self.mu.item():.4f}, sigma={self.sigma.item():.4f}, gamma={self.gamma.item():.4f}, beta={self.beta.item():.4f}'
 
 
+class GaussianGate(nn.Module):
+    """
+    高斯门控单元 (Gaussian Gated Unit)
+
+    思路：用高斯函数作为软门控，控制信息流
+
+        output = gaussian_gate(x) * x
+
+    其中 gate = exp(-(x - mu)^2 / (2 * sigma^2))
+
+    优势：
+    - 只有 mu 和 sigma 两个可学习参数
+    - 高斯门控天然有界 (0, 1]，不需要额外 sigmoid
+    - mu 控制"对哪个范围的输入响应"
+    - sigma 控制"响应的宽窄"
+    - 参数量与 GELU 相当，但语义更清晰
+    """
+    def __init__(self, init_mu=0.0, init_sigma=1.0):
+        super().__init__()
+        self.mu = nn.Parameter(torch.tensor(float(init_mu)))
+        self.sigma = nn.Parameter(torch.tensor(float(init_sigma)))
+
+    def forward(self, x):
+        sigma = torch.abs(self.sigma) + 1e-8
+        gate = torch.exp(-((x - self.mu) ** 2) / (2 * sigma ** 2))
+        return gate * x
+
+    def extra_repr(self):
+        return f'mu={self.mu.item():.4f}, sigma={self.sigma.item():.4f}'
+
+
 class MultiGaussianActivation(nn.Module):
     """
     多高斯混合激活函数

@@ -110,6 +110,62 @@ class GaussianGate(nn.Module):
         return f'mu={self.mu.item():.4f}, sigma={self.sigma.item():.4f}'
 
 
+class SparseGaussianGate(nn.Module):
+    """
+    稀疏多高斯门控 (Sparse Multi-Gaussian Gate)
+
+    用 N 个高斯的混合作为门控，模拟神经元的离散感受野响应：
+
+        gate(x) = sum_i [ w_i * exp(-(x - mu_i)^2 / (2 * sigma_i^2)) ]
+        output  = gate(x) * x
+
+    神经科学类比：
+    - 每个高斯 = 一个"感受野中心"
+    - mu_i     = 第 i 个感受野的位置（离散分布）
+    - sigma_i  = 第 i 个感受野的宽度
+    - w_i      = 该感受野的权重（重要性）
+
+    优势：
+    - N=1 退化为 GaussianGate
+    - N>1 可以模拟多峰响应，表达能力更强
+    - 感受野位置 mu 可以自由学习，形成离散分布
+    - 参数量仍然很少：3N 个标量 (mu, sigma, w) per layer
+
+    Args:
+        n_gaussians : 高斯数量（感受野数量）
+        init_sigma  : 初始宽度
+        spread      : 初始 mu 的分布范围 [-spread, spread]
+    """
+    def __init__(self, n_gaussians=4, init_sigma=1.0, spread=2.0):
+        super().__init__()
+        self.n_gaussians = n_gaussians
+
+        # 初始化：mu 均匀分布在 [-spread, spread]，避免重叠
+        mu_init = torch.linspace(-spread, spread, n_gaussians)
+        self.mu    = nn.Parameter(mu_init)
+        self.sigma = nn.Parameter(torch.full((n_gaussians,), float(init_sigma)))
+        # 权重初始化为均等
+        self.w     = nn.Parameter(torch.ones(n_gaussians) / n_gaussians)
+
+    def forward(self, x):
+        # x: [..., D]  ->  扩展最后一维做广播
+        # mu/sigma/w: [N]
+        sigma = torch.abs(self.sigma) + 1e-8
+        w     = F.softmax(self.w, dim=0)          # 权重归一化，和为 1
+
+        # [..., D, 1] - [N] = [..., D, N]
+        x_exp = x.unsqueeze(-1)
+        gaussians = torch.exp(-((x_exp - self.mu) ** 2) / (2 * sigma ** 2))  # [..., D, N]
+        gate = (gaussians * w).sum(dim=-1)         # [..., D]
+        return gate * x
+
+    def extra_repr(self):
+        w = F.softmax(self.w, dim=0)
+        mu_str = ', '.join(f'{v:.3f}' for v in self.mu.tolist())
+        w_str  = ', '.join(f'{v:.3f}' for v in w.tolist())
+        return f'n={self.n_gaussians}, mu=[{mu_str}], w=[{w_str}]'
+
+
 class MultiGaussianActivation(nn.Module):
     """
     多高斯混合激活函数

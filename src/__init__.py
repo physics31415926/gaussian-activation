@@ -8,6 +8,7 @@ from .activations import (
     LearnableGaussianActivation,
     LearnableGaussian,
     GaussianGate,
+    SparseGaussianGate,
     MultiGaussianActivation,
     get_activation,
 )
@@ -36,6 +37,7 @@ __all__ = [
     'LearnableGaussianActivation',
     'LearnableGaussian',
     'GaussianGate',
+    'SparseGaussianGate',
     'MultiGaussianActivation',
     'get_activation',
     'MLP',

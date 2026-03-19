@@ -72,7 +72,6 @@ python experiments/exp9_sparse_gaussian_gate.py  # 稀疏多高斯
 gaussian-activation/
 ├── src/
 │   ├── activations.py       # GaussianGate, SparseGaussianGate
-│   ├── visualization.py      # 可视化工具
 │   └── ...
 ├── experiments/
 │   ├── exp7c_nanogpt_gaussian.py
@@ -87,17 +86,40 @@ gaussian-activation/
 
 ---
 
-## 🔧 使用方法
+## 🔮 未来方向思考
 
-```python
-from src.activations import GaussianGate, SparseGaussianGate
+### 1. 更少的参数设计
+当前 GaussianGate 已有 2 个参数，是否可以进一步减少？
+- **固定 mu=0**，只学习 sigma → 1 参数
+- **固定 sigma=1**，只学习 mu → 1 参数
+- 或者用 **权重归一化** 技巧，让门控不引入额外参数
 
-# GaussianGate: 单峰门控
-act = GaussianGate(init_mu=0.0, init_sigma=1.0)
+### 2. 稀疏化 + 剪枝
+SparseGaussianGate 的核心假设是"神经元只对特定范围响应"：
+- 训练后可以 **剪枝** 不重要的高斯分量
+- 将 N=8 压缩到 N=2-3，形成真正的稀疏表示
 
-# SparseGaussianGate: 多峰门控
-act = SparseGaussianGate(n_gaussians=4, init_sigma=1.0, spread=2.0)
-```
+### 3. 位置编码的替代
+Transformer 的位置编码是手动设计的，能否让网络自己学习？
+- 用 SparseGaussianGate 作为位置嵌入的基函数
+- 让模型自动发现"位置敏感"的响应模式
+
+### 4. 混合专家 (MoE) 视角
+SparseGaussianGate 本质是一个简化的 MoE：
+- 每个高斯 = 一个"专家"
+- 门控 = 路由机制
+- 可以借鉴 MoE 的技术：负载均衡、Top-k 路由
+
+### 5. 更高效的实现
+当前的高斯计算有 exp 和平方操作：
+- 能否用 **泰勒展开** 近似？
+- 能否用 **查表** 加速？
+- 与 ReLU/GELU 的计算开销对比
+
+### 6. 理论分析
+- 高斯门控的 **梯度流** 有什么特性？
+- 与 GELU 相比，**收敛速度**差异的原因是什么？
+- **泛化能力** 与参数数量的关系？
 
 ---
 

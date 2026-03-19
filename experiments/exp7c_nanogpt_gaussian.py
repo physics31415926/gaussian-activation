@@ -28,10 +28,6 @@ import urllib.request
 
 # 从 src 导入
 from src.activations import LearnableGaussian
-from src.visualization import (
-    visualize_learnable_gaussian_params,
-    visualize_all_gaussian_activations
-)
 
 def set_seed(seed=42):
     random.seed(seed)
@@ -344,27 +340,20 @@ def main():
     print(f"  Test loss: {test_loss:.4f}")
     print(f"  Time: {train_time:.1f}s")
     
-    # 可视化
-    print("\n" + "="*60)
-    print("Visualizing Learned Activations")
-    print("="*60)
-    
+        # 保存结果
     Path('results').mkdir(exist_ok=True)
     
-    # 参数打印
-    visualize_learnable_gaussian_params(
-        model, 
-        save_path='results/exp7c_gaussian_params.txt',
-        show=False
-    )
+    result = {
+        'activation': 'gaussian',
+        'best_train_loss': best_loss,
+        'test_loss': test_loss,
+        'train_time': train_time,
+        'initial_params': initial_params,
+        'final_params': final_params,
+    }
     
-    # 所有层的激活函数形状
-    visualize_all_gaussian_activations(
-        model,
-        save_path='results/exp7c_gaussian_activations.png',
-        show=False,
-        device=device
-    )
+    with open('results/exp7c_gaussian_results.json', 'w') as f:
+        json.dump(result, f, indent=2)
     
     # 保存结果
     result = {

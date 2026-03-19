@@ -39,7 +39,6 @@ import time
 import urllib.request
 
 from src.activations import GaussianGate, SparseGaussianGate
-from src.visualization import visualize_all_gaussian_activations
 
 
 def set_seed(seed=42):
@@ -320,26 +319,15 @@ SparseGaussianGate: 用 N 个高斯模拟离散响应模式
     for name, r in results.items():
         print(f"{r['desc']:<30} {r['best_train_loss']:>10.4f} {r['test_loss']:>10.4f} {r['time']:>7.1f}s")
 
-    # 可视化
+    # 保存结果
     Path('results').mkdir(exist_ok=True)
 
-    for name, r in results.items():
-        if 'sparse' in name or 'gate' in name:
-            visualize_all_gaussian_activations(
-                r['model'],
-                save_path=f'results/exp9_{name}_activations.png',
-                show=False,
-                device=device
-            )
-
-    # 保存结果
     save_data = {k: {kk: vv for kk, vv in v.items() if kk != 'model'}
                  for k, v in results.items()}
     with open('results/exp9_results.json', 'w') as f:
         json.dump(save_data, f, indent=2)
 
     print("\n✓ results/exp9_results.json")
-    print("✓ results/exp9_*_activations.png")
     print("\nDone!")
 
 

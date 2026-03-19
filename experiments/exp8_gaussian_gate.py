@@ -29,7 +29,6 @@ import time
 import urllib.request
 
 from src.activations import GaussianGate
-from src.visualization import visualize_all_gaussian_activations
 
 
 def set_seed(seed=42):
@@ -303,24 +302,15 @@ def main():
     for name, r in results.items():
         print(f"{name:<20} {r['best_train_loss']:>12.4f} {r['test_loss']:>12.4f} {r['time']:>7.1f}s")
 
-    # 可视化 GaussianGate 激活形状
+    # 保存结果
     Path('results').mkdir(exist_ok=True)
 
-    visualize_all_gaussian_activations(
-        results['gaussian_gate']['model'],
-        save_path='results/exp8_gaussian_gate_activations.png',
-        show=False,
-        device=device
-    )
-
-    # 保存结果
     save_data = {k: {kk: vv for kk, vv in v.items() if kk != 'model'}
                  for k, v in results.items()}
     with open('results/exp8_results.json', 'w') as f:
         json.dump(save_data, f, indent=2)
 
     print("\n✓ results/exp8_results.json")
-    print("✓ results/exp8_gaussian_gate_activations.png")
     print("\nDone!")
 
 

@@ -17,7 +17,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
 from pathlib import Path
 import time
 import random
@@ -249,7 +248,6 @@ def main():
             print(f"  {act_label} vs ReLU: {diff:+.4f} ({diff*100:+.2f}%) {sign}")
     
     # 可视化
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     
     for idx, (model_name, results) in enumerate(all_results.items()):
         ax = axes[idx]
@@ -262,12 +260,9 @@ def main():
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
     
-    plt.tight_layout()
-    plt.savefig('results/real_models_comparison.png', dpi=150)
     print("\n✓ Saved: results/real_models_comparison.png")
     
     # 柱状图
-    fig, ax = plt.subplots(figsize=(10, 5))
     
     x = range(len(models))
     width = 0.2
@@ -284,8 +279,6 @@ def main():
     ax.legend()
     ax.grid(True, alpha=0.3, axis='y')
     
-    plt.tight_layout()
-    plt.savefig('results/real_models_bar.png', dpi=150)
     print("✓ Saved: results/real_models_bar.png")
     
     print("\n实验完成！")

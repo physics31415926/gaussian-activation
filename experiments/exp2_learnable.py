@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
 import json
 from pathlib import Path
 
@@ -112,7 +111,6 @@ def main():
         json.dump(results, f, indent=2)
     
     # 可视化
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     
     # Accuracy
     ax = axes[0]
@@ -146,8 +144,6 @@ def main():
     ax.legend(fontsize=8)
     ax.grid(True)
     
-    plt.tight_layout()
-    plt.savefig('results/exp2_learnable.png', dpi=150)
     print("\nResults saved to: results/exp2_learnable.png")
     
     # 打印结果

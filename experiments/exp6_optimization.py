@@ -18,17 +18,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
 from pathlib import Path
 import time
 import math
 
 # 从 src 导入
 from src.activations import LearnableGaussian
-from src.visualization import (
-    visualize_learnable_gaussian_params,
-    visualize_all_gaussian_activations
-)
 
 
 # ============================================================
@@ -327,29 +322,4 @@ def main():
         print(f"| {r['model']} | {r['activation']} | {r['best_acc']:.4f} | {r['train_time']:.1f} |")
     
     # 可视化 Gaussian 模型
-    Path('results').mkdir(exist_ok=True)
-    
-    for r in results:
-        if r['activation'] == 'gaussian':
-            model_name = r['model'].replace('-', '_').lower()
-            
-            # 参数分布
-            visualize_learnable_gaussian_params(
-                r['model_instance'],
-                save_path=f"results/exp6_{model_name}_params.png",
-                show=False
-            )
-            
-            # 激活函数形状
-            visualize_all_gaussian_activations(
-                r['model_instance'],
-                save_path=f"results/exp6_{model_name}_activations.png",
-                show=False
-            )
-    
-    print("\n✓ Visualizations saved to: results/exp6_*.png")
-    print("\n实验完成！")
-
-
-if __name__ == "__main__":
     main()

@@ -23,10 +23,6 @@ import time
 
 # 从 src 导入
 from src.activations import LearnableGaussian
-from src.visualization import (
-    visualize_learnable_gaussian_params,
-    visualize_all_gaussian_activations
-)
 
 
 # ============================================================
@@ -255,28 +251,6 @@ def main():
     for r in results:
         print(f"| {r['model']} | {r['activation']} | {r['depth']} | {r['best_acc']:.4f} | {r['train_time']:.1f} |")
     
-    # 可视化 Gaussian 模型
-    Path('results').mkdir(exist_ok=True)
-    
-    for r in results:
-        if r['activation'] == 'gaussian' and r['depth'] == 10:
-            model_name = f"{r['model'].lower()}_depth{r['depth']}"
-            
-            # 参数分布
-            visualize_learnable_gaussian_params(
-                r['model_instance'],
-                save_path=f"results/exp5_{model_name}_params.png",
-                show=False
-            )
-            
-            # 激活函数形状
-            visualize_all_gaussian_activations(
-                r['model_instance'],
-                save_path=f"results/exp5_{model_name}_activations.png",
-                show=False
-            )
-    
-    print("\n✓ Visualizations saved to: results/exp5_*.png")
     print("\n实验完成！")
 
 

@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
 import json
 from pathlib import Path
 
@@ -112,7 +111,6 @@ def main():
         json.dump(results, f, indent=2)
     
     # 可视化
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
     # Accuracy vs Depth
     ax = axes[0]
@@ -138,8 +136,6 @@ def main():
     ax.legend()
     ax.grid(True)
     
-    plt.tight_layout()
-    plt.savefig('results/exp3_depth.png', dpi=150)
     print("\nResults saved to: results/exp3_depth.png")
     
     # 打印结果表格
